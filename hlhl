@@ -1,0 +1,66 @@
+#!/usr/bin/env python3
+
+import json
+import os
+import tempfile
+from argparse import ArgumentParser
+from zipfile import ZipFile
+
+
+CHARACTER_HIGHLIGHTING_FILENAME = "characterHighlighting.json"
+DEFAULT_COLOR = "D1E3F4"
+
+
+def highlight_character(file_path, character, clear_others=False, color=DEFAULT_COLOR):
+    """Highlights a character in a Highland document."""
+    print(f"Highlighting {character} in {file_path}.")
+
+    # We write the updated script to a temporary file then replace the original later.
+    temp_fd, temp_path = tempfile.mkstemp()
+    os.close(temp_fd)
+
+    with ZipFile(file_path, "r") as in_zip, ZipFile(temp_path, "w") as out_zip:
+        character_highlighting_path = os.path.join(
+            os.path.dirname(in_zip.namelist()[0]),
+            CHARACTER_HIGHLIGHTING_FILENAME,
+        )
+
+        character_highlighting = {}
+
+        # Copy items from the original zip file to the temporary one.
+        # But load characterHighlighting.json when we find it.
+        for item in in_zip.infolist():
+            content = in_zip.read(item.filename)
+
+            if item.filename == character_highlighting_path:
+                character_highlighting = json.loads(content)
+            else:
+                out_zip.writestr(item, content)
+
+        if clear_others:
+            character_highlighting.clear()
+
+        # Now write characterHighlighting.json.
+        character_highlighting[character.upper()] = color
+        character_highlighting_json = json.dumps(character_highlighting)
+        out_zip.writestr(character_highlighting_path, character_highlighting_json)
+
+    # Overwrite the original file with the temporary one we created.
+    os.remove(file_path)
+    os.rename(temp_path, file_path)
+
+
+if __name__ == "__main__":
+    parser = ArgumentParser(description="Highlights a character in a Highland screenplay.")
+    parser.add_argument("file_path", help="Highland file", metavar="FILE")
+    parser.add_argument("character", help="character to highlight", metavar="CHARACTER")
+    parser.add_argument("--clear-others", action="store_true", help="remove other highlights")
+    parser.add_argument("--color", default=DEFAULT_COLOR, help=f"hex color value (default: {DEFAULT_COLOR})")
+    args = parser.parse_args()
+
+    highlight_character(
+        args.file_path,
+        args.character,
+        clear_others=args.clear_others,
+        color=args.color,
+    )
